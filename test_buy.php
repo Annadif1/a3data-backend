@@ -103,9 +103,9 @@ function updateAmount() {
 async function buy() {
     document.getElementById('response').innerText = 'Processing request...';
     
-   const payload = {
+    const payload = {
         user_id: parseInt(document.getElementById('userId').value),
-        service_id: document.getElementById('serviceNetwork').value, // Changed from network to service_id
+        service_id: document.getElementById('serviceNetwork').value,
         variation_code: document.getElementById('variationCode').value,
         phone: document.getElementById('phone').value,
         amount: parseFloat(document.getElementById('amount').value)
