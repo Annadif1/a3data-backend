@@ -1,14 +1,16 @@
 <?php
-$host = getenv('DB_HOST');
+$host = trim(getenv('DB_HOST'));
 $port = getenv('DB_PORT');
 $user = getenv('DB_USER');
 $pass = getenv('DB_PASS');
 $dbname = getenv('DB_NAME');
 
-$conn = new mysqli($host, $user, $pass, $dbname, $port);
+$conn = mysqli_init();
+$conn->options(MYSQLI_OPT_CONNECT_TIMEOUT, 10);
+$conn->ssl_set(NULL, NULL, NULL, NULL, NULL);
 
-if ($conn->connect_error) {
-    die("Database Connection Failed: " . $conn->connect_error);
+if (!@$conn->real_connect($host, $user, $pass, $dbname, $port, NULL, MYSQLI_CLIENT_SSL)) {
+    die("Database Connection Failed: " . mysqli_connect_error());
 }
 
 $queries = [
