@@ -27,7 +27,9 @@
             <option value="mtn-data">MTN Data</option>
             <option value="airtel-data">Airtel Data</option>
             <option value="glo-data">Glo Data</option>
+            <option value="glo-sme-data">Glo Data (SME)</option>
             <option value="etisalat-data">9mobile Data</option>
+            <option value="binatone-data">9mobile SME Data</option>
         </optgroup>
         <optgroup label="Airtime Top-up">
             <option value="mtn">MTN Airtime</option>
