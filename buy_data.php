@@ -5,17 +5,17 @@ header("Access-Control-Allow-Methods: POST");
 
 $data = json_decode(file_get_contents("php://input"), true);
 
-if (!isset($data['user_id']) || !isset($data['network']) || !isset($data['plan_id']) || !isset($data['phone']) || !isset($data['amount'])) {
-    echo json_encode(["status" => "error", "message" => "All fields (user_id, network, plan_id, phone, amount) are required."]);
+if (!isset($data['user_id']) || !isset($data['service_id']) || !isset($data['variation_code']) || !isset($data['phone']) || !isset($data['amount'])) {
+    echo json_encode(["status" => "error", "message" => "Missing required fields: user_id, service_id, variation_code, phone, amount"]);
     exit();
 }
 
 $user_id = $data['user_id'];
-$network = $data['network'];
-$plan_id = $data['plan_id'];
+$service_id = $data['service_id']; // e.g., 'mtn-data', 'airtel-data', 'glo-data'
+$variation_code = $data['variation_code']; // e.g., 'mtn-100mb-24hrs'
 $phone = $data['phone'];
 $amount = floatval($data['amount']);
-$reference = "DATA_" . uniqid() . "_" . time();
+$request_id = date('YmdHis') . rand(1000, 9999); // VTpass required format: YYYYMMDDHHII + random digits
 
 $host = getenv('DB_HOST');
 $port = getenv('DB_PORT');
@@ -58,59 +58,64 @@ if ($deduct_stmt->affected_rows === 0) {
 
 // 3. Record pending transaction
 $log_stmt = $conn->prepare("INSERT INTO transactions (user_id, reference, type, amount, status) VALUES (?, ?, 'data_purchase', ?, 'pending')");
-$log_stmt->bind_param("isd", $user_id, $reference, $amount);
+$log_stmt->bind_param("isd", $user_id, $request_id, $amount);
 $log_stmt->execute();
 
-// 4. Hit VTU Provider API (Replace URL/Headers/Payload with your VTU Provider details)
-$vtu_api_url = "https://your-vtu-provider-api.com/api/data/"; // Replace with provider API
-$api_token = "YOUR_VTU_PROVIDER_API_TOKEN"; // Replace with your token
+// 4. Hit VTpass API
+// Use 'https://sandbox.vtpass.com/api/pay' for testing or 'https://vtpass.com/api/pay' for production
+$vtpass_url = "https://sandbox.vtpass.com/api/pay"; 
+$api_key = getenv('VTPASS_API_KEY'); 
+$secret_key = getenv('VTPASS_SECRET_KEY');
 
-$payload = json_encode([
-    "network" => $network,
-    "mobile_number" => $phone,
-    "plan" => $plan_id,
-    "Ported_number" => true
-]);
+$payload = [
+    'request_id' => $request_id,
+    'serviceID' => $service_id,
+    'billersCode' => $phone,
+    'variation_code' => $variation_code,
+    'amount' => $amount,
+    'phone' => $phone
+];
 
-$ch = curl_init($vtu_api_url);
+$ch = curl_init($vtpass_url);
 curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($payload));
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    "Authorization: Token " . $api_token,
-    "Content-Type: application/json"
+    "api-key: " . $api_key,
+    "secret-key: " . $secret_key
 ]);
 
 $response = curl_exec($ch);
 curl_close($ch);
 
-$provider_res = json_decode($response, true);
+$res_data = json_decode($response, true);
 
-// 5. Update transaction status based on API response
-if (isset($provider_res['Status']) && strtolower($provider_res['Status']) == 'successful') {
+// 5. Check VTpass response (000 = Successful)
+if (isset($res_data['code']) && $res_data['code'] === "000") {
     $update_tx = $conn->prepare("UPDATE transactions SET status = 'success' WHERE reference = ?");
-    $update_tx->bind_param("s", $reference);
+    $update_tx->bind_param("s", $request_id);
     $update_tx->execute();
 
     echo json_encode([
         "status" => "success",
         "message" => "Data purchase successful!",
-        "reference" => $reference
+        "request_id" => $request_id,
+        "vtpass_response" => $res_data
     ]);
 } else {
-    // Refund user if provider request fails
+    // Refund user if purchase fails
     $refund_stmt = $conn->prepare("UPDATE wallets SET balance = balance + ? WHERE user_id = ?");
     $refund_stmt->bind_param("di", $amount, $user_id);
     $refund_stmt->execute();
 
     $fail_tx = $conn->prepare("UPDATE transactions SET status = 'failed' WHERE reference = ?");
-    $fail_tx->bind_param("s", $reference);
+    $fail_tx->bind_param("s", $request_id);
     $fail_tx->execute();
 
     echo json_encode([
         "status" => "error",
-        "message" => "Data purchase failed. Wallet refunded.",
-        "provider_error" => $provider_res
+        "message" => "Purchase failed. Wallet refunded.",
+        "vtpass_error" => $res_data
     ]);
 }
 ?>
