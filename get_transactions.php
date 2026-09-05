@@ -26,8 +26,8 @@ if ($conn->connect_error) {
     exit;
 }
 
-// Fetch transaction history
-$stmt = $conn->prepare("SELECT id, network, phone, amount, status, request_id, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50");
+// Fetch transaction history using service_id
+$stmt = $conn->prepare("SELECT id, service_id, phone, amount, status, request_id, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -47,3 +47,4 @@ echo json_encode([
     "transactions" => $transactions
 ]);
 ?>
+
